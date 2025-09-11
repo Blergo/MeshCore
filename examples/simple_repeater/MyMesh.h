@@ -108,6 +108,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   ESPNowBridge bridge;
 #endif
 
+  // === Added: repeater-path blocking state ===
+  bool _block_enabled = false;
+  uint8_t _blocked_repeater_key[PUB_KEY_SIZE] = {0};
+
   ClientInfo* putClient(const mesh::Identity& id);
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
@@ -189,4 +193,10 @@ public:
   void clearStats() override;
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   void loop();
+
+  // === Added: API to control repeater-path blocking ===
+  void setBlockedRepeaterKey(const uint8_t key[PUB_KEY_SIZE]);
+  bool setBlockedRepeaterKeyHex(const char* hex, size_t len); // returns true on success
+  void clearBlockedRepeaterKey();
+  bool isBlockingEnabled() const { return _block_enabled; }
 };
