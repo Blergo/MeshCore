@@ -19,6 +19,19 @@ void halt() {
 
 static char command[160];
 
+// Blocked repeater Public Key
+static const char* BLOCKED_REPEATER_HEX = "0219508f6b2d0f51261d4151878fca729f6a85dd50c26f31feba37934baa9af0"; // Replace with actual public key
+
+// Helper to check if blocked repeater is in path
+bool containsBlockedRepeater(const mesh::MeshMessage& msg, const uint8_t* blocked_pub_key) {
+  for (const auto& hop : msg.path) {
+    if (memcmp(hop.pub_key, blocked_pub_key, PUB_KEY_SIZE) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -79,6 +92,19 @@ void setup() {
 #ifdef DISPLAY_CLASS
   ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
 #endif
+
+  // M<essage receive hook with filtering
+  the_mesh.onReceive([](const mesh::MeshMessage& msg) {
+    uint8_t blocked_pub_key[PUB_KEY_SIZE];
+    mesh::Utils::parseHex(blocked_pub_key, BLOCKED_REPEATER_HEX, PUB_KEY_SIZE);
+
+    if (containsBlockedRepeater(msg, blocked_pub_key)) {
+      Serial.println("Blocked message: repeater found in path.");
+      return;
+    }
+
+    the_mesh.forwardMessage(msg);
+  });
 
   // send out initial Advertisement to the mesh
   the_mesh.sendSelfAdvertisement(16000);
