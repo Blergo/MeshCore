@@ -88,26 +88,19 @@ void setup() {
 #endif
 
   // 🛑 Packet-level hook to block messages with specific repeater in path
-  the_mesh.onRecvPacket([](const uint8_t* packet, size_t len, int rssi) {
-    if (len < 10) return;
+  the_mesh.addPacketHandler([](mesh::Packet* pkt) -> mesh::DispatcherAction {
+    if (!pkt || pkt->path_len == 0 || pkt->path_len > 64) return mesh::DISPATCHER_CONTINUE;
 
-    // Extract path length from packet header
-    uint8_t path_len = packet[2];  // adjust if your packet format differs
-    if (path_len == 0 || path_len > 64) return;
-
-    const uint8_t* path_ptr = packet + 3;  // adjust offset if needed
-    size_t hop_count = path_len / PUB_KEY_SIZE;
-
+    size_t hop_count = pkt->path_len / PUB_KEY_SIZE;
     for (size_t i = 0; i < hop_count; ++i) {
-      const uint8_t* hop = path_ptr + i * PUB_KEY_SIZE;
+      const uint8_t* hop = pkt->path + i * PUB_KEY_SIZE;
       if (memcmp(hop, BLOCKED_REPEATER_KEY, PUB_KEY_SIZE) == 0) {
         Serial.println("Blocked packet: repeater found in path.");
-        return;
+        return mesh::DISPATCHER_DROP;
       }
     }
 
-    // Forward packet normally
-    the_mesh.recvPacket(packet, len, rssi);
+    return mesh::DISPATCHER_CONTINUE;
   });
 
   the_mesh.sendSelfAdvertisement(16000);
