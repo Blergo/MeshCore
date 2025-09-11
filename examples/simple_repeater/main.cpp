@@ -1,6 +1,5 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
-
 #include "MyMesh.h"
 
 #ifdef DISPLAY_CLASS
@@ -19,18 +18,13 @@ void halt() {
 
 static char command[160];
 
-// Blocked repeater Public Key
-static const char* BLOCKED_REPEATER_HEX = "0219508f6b2d0f51261d4151878fca729f6a85dd50c26f31feba37934baa9af0"; // Replace with actual public key
-
-// Helper to check if blocked repeater is in path
-bool containsBlockedRepeater(const mesh::MeshMessage& msg, const uint8_t* blocked_pub_key) {
-  for (const auto& hop : msg.path) {
-    if (memcmp(hop.pub_key, blocked_pub_key, PUB_KEY_SIZE) == 0) {
-      return true;
-    }
-  }
-  return false;
-}
+// Blocked repeater Public Key (binary format)
+static const uint8_t BLOCKED_REPEATER_KEY[PUB_KEY_SIZE] = {
+  0x02, 0x19, 0x50, 0x8f, 0x6b, 0x2d, 0x0f, 0x51,
+  0x26, 0x1d, 0x41, 0x51, 0x87, 0x8f, 0xca, 0x72,
+  0x9f, 0x6a, 0x85, 0xdd, 0x50, 0xc2, 0x6f, 0x31,
+  0xfe, 0xba, 0x37, 0x93, 0x4b, 0xaa, 0x9a, 0xf0
+};
 
 void setup() {
   Serial.begin(115200);
@@ -70,11 +64,12 @@ void setup() {
 #else
   #error "need to define filesystem"
 #endif
+
   if (!store.load("_main", the_mesh.self_id)) {
     MESH_DEBUG_PRINTLN("Generating new keypair");
-    the_mesh.self_id = radio_new_identity();   // create new random identity
+    the_mesh.self_id = radio_new_identity();
     int count = 0;
-    while (count < 10 && (the_mesh.self_id.pub_key[0] == 0x00 || the_mesh.self_id.pub_key[0] == 0xFF)) {  // reserved id hashes
+    while (count < 10 && (the_mesh.self_id.pub_key[0] == 0x00 || the_mesh.self_id.pub_key[0] == 0xFF)) {
       the_mesh.self_id = radio_new_identity(); count++;
     }
     store.save("_main", the_mesh.self_id);
@@ -86,27 +81,35 @@ void setup() {
   command[0] = 0;
 
   sensors.begin();
-
   the_mesh.begin(fs);
 
 #ifdef DISPLAY_CLASS
   ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
 #endif
 
-  // M<essage receive hook with filtering
-  the_mesh.onReceive([](const mesh::MeshMessage& msg) {
-    uint8_t blocked_pub_key[PUB_KEY_SIZE];
-    mesh::Utils::parseHex(blocked_pub_key, BLOCKED_REPEATER_HEX, PUB_KEY_SIZE);
+  // 🛑 Packet-level hook to block messages with specific repeater in path
+  the_mesh.onRecvPacket([](const uint8_t* packet, size_t len, int rssi) {
+    if (len < 10) return;
 
-    if (containsBlockedRepeater(msg, blocked_pub_key)) {
-      Serial.println("Blocked message: repeater found in path.");
-      return;
+    // Extract path length from packet header
+    uint8_t path_len = packet[2];  // adjust if your packet format differs
+    if (path_len == 0 || path_len > 64) return;
+
+    const uint8_t* path_ptr = packet + 3;  // adjust offset if needed
+    size_t hop_count = path_len / PUB_KEY_SIZE;
+
+    for (size_t i = 0; i < hop_count; ++i) {
+      const uint8_t* hop = path_ptr + i * PUB_KEY_SIZE;
+      if (memcmp(hop, BLOCKED_REPEATER_KEY, PUB_KEY_SIZE) == 0) {
+        Serial.println("Blocked packet: repeater found in path.");
+        return;
+      }
     }
 
-    the_mesh.forwardMessage(msg);
+    // Forward packet normally
+    the_mesh.recvPacket(packet, len, rssi);
   });
 
-  // send out initial Advertisement to the mesh
   the_mesh.sendSelfAdvertisement(16000);
 }
 
@@ -120,19 +123,18 @@ void loop() {
     }
     Serial.print(c);
   }
-  if (len == sizeof(command)-1) {  // command buffer full
+  if (len == sizeof(command)-1) {
     command[sizeof(command)-1] = '\r';
   }
 
-  if (len > 0 && command[len - 1] == '\r') {  // received complete line
-    command[len - 1] = 0;  // replace newline with C string null terminator
+  if (len > 0 && command[len - 1] == '\r') {
+    command[len - 1] = 0;
     char reply[160];
-    the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
+    the_mesh.handleCommand(0, command, reply);
     if (reply[0]) {
       Serial.print("  -> "); Serial.println(reply);
     }
-
-    command[0] = 0;  // reset command buffer
+    command[0] = 0;
   }
 
   the_mesh.loop();
