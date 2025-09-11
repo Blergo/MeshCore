@@ -75,18 +75,16 @@ void setup() {
   sensors.begin();
 
   the_mesh.begin(fs);
+  const char* BLOCKED_REPEATER_HEX = "0219508f6b2d0f51261d4151878fca729f6a85dd50c26f31feba37934baa9af0";
+  if (!the_mesh.setBlockedRepeaterKeyHex(BLOCKED_REPEATER_HEX)) {
+    Serial.println("Failed to set blocked repeater key.");
+  } else {
+    Serial.println("Repeater path filtering enabled.");
+  }
 
 #ifdef DISPLAY_CLASS
   ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
 #endif
-
-  // Configure the blocked repeater (32-byte public key as 64 hex chars)
-  const char* BLOCKED_REPEATER_HEX = "0219508f6b2d0f51261d4151878fca729f6a85dd50c26f31feba37934baa9af0";
-  if (!the_mesh.setBlockedRepeaterKeyHex(BLOCKED_REPEATER_HEX, 0)) {
-    Serial.println("Failed to set blocked repeater key (hex parse error).");
-  } else {
-    Serial.println("Path filter enabled for blocked repeater key.");
-  }
 
   // send out initial Advertisement to the mesh
   the_mesh.sendSelfAdvertisement(16000);
