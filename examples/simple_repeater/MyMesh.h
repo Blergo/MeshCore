@@ -81,7 +81,6 @@ struct NeighbourInfo {
 #endif
 
 #define FIRMWARE_ROLE "repeater"
-
 #define PACKET_LOG_FILE  "/packet_log"
 
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
