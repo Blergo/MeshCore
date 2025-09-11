@@ -81,6 +81,7 @@ struct NeighbourInfo {
 #endif
 
 #define FIRMWARE_ROLE "repeater"
+
 #define PACKET_LOG_FILE  "/packet_log"
 
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
@@ -106,10 +107,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 #elif defined(WITH_ESPNOW_BRIDGE)
   ESPNowBridge bridge;
 #endif
-
-  // === Added: repeater-path blocking state ===
-  bool _block_enabled = false;
-  uint8_t _blocked_repeater_key[PUB_KEY_SIZE] = {0};
 
   ClientInfo* putClient(const mesh::Identity& id);
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
@@ -151,6 +148,8 @@ protected:
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len);
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
+  bool _block_enabled = false;
+  uint8_t _blocked_repeater_key[PUB_KEY_SIZE] = {0};
 
 public:
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
@@ -181,6 +180,11 @@ public:
     _fs->remove(PACKET_LOG_FILE);
   }
 
+  void setBlockedRepeaterKey(const uint8_t key[PUB_KEY_SIZE]);
+  bool setBlockedRepeaterKeyHex(const char* hex, size_t len = 0);
+  void clearBlockedRepeaterKey();
+  bool isBlockingEnabled() const { return _block_enabled; }
+  
   void dumpLogFile() override;
   void setTxPower(uint8_t power_dbm) override;
   void formatNeighborsReply(char *reply) override;
@@ -192,10 +196,4 @@ public:
   void clearStats() override;
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   void loop();
-
-  // === Added: API to control repeater-path blocking ===
-  void setBlockedRepeaterKey(const uint8_t key[PUB_KEY_SIZE]);
-  bool setBlockedRepeaterKeyHex(const char* hex, size_t len); // returns true on success
-  void clearBlockedRepeaterKey();
-  bool isBlockingEnabled() const { return _block_enabled; }
 };
